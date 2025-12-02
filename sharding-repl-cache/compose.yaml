@@ -1,4 +1,4 @@
-name: mongo-sharding-repl
+name: sharding-repl-cache
 
 services:
   configSrv1:
@@ -252,6 +252,131 @@ services:
       - ./scripts:/scripts
     entrypoint: [ "bash", "/scripts/init-mongos.sh" ]
 
+  redis1:
+    image: "redis:latest"
+    container_name: redis1
+    ports:
+      - "7001:6379"
+    volumes:
+      - redis1-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis2:
+    image: "redis:latest"
+    container_name: redis2
+    ports:
+      - "7002:6379"
+    volumes:
+      - redis2-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis3:
+    image: "redis:latest"
+    container_name: redis3
+    ports:
+      - "7003:6379"
+    volumes:
+      - redis3-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis4:
+    image: "redis:latest"
+    container_name: redis4
+    ports:
+      - "7004:6379"
+    volumes:
+      - redis4-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis5:
+    image: "redis:latest"
+    container_name: redis5
+    ports:
+      - "7005:6379"
+    volumes:
+      - redis5-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis6:
+    image: "redis:latest"
+    container_name: redis6
+    ports:
+      - "7006:6379"
+    volumes:
+      - redis6-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    networks:
+      - app-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis_init:
+    image: "redis:latest"
+    container_name: redis_init
+    restart: "no"
+    depends_on:
+      redis1:
+        condition: service_healthy
+      redis2:
+        condition: service_healthy
+      redis3:
+        condition: service_healthy
+      redis4:
+        condition: service_healthy
+      redis5:
+        condition: service_healthy
+      redis6:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: [ "/bin/sh", "/scripts/init-redis-cluster.sh" ]
+
   pymongo_api:
     container_name: pymongo_api
     build:
@@ -267,6 +392,7 @@ services:
     environment:
       MONGODB_URL: "mongodb://mongos_router:27026"
       MONGODB_DATABASE_NAME: "somedb"
+      REDIS_URL: "redis://redis1:6379"
 
 networks:
   app-network:
@@ -285,3 +411,9 @@ volumes:
   shard2a-data:
   shard2b-data:
   shard2c-data:
+  redis1-data:
+  redis2-data:
+  redis3-data:
+  redis4-data:
+  redis5-data:
+  redis6-data:
