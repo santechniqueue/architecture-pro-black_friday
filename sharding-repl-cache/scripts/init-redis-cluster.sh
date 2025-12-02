@@ -49,6 +49,27 @@ create_cluster() {
   log "Redis Cluster creation command completed."
 }
 
+wait_for_cluster_ok() {
+  max_attempts="${1:-30}"
+  attempt=1
+
+  log "Waiting for Redis Cluster to reach cluster_state:ok..."
+
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if is_cluster_configured; then
+      log "🎉 Redis Cluster is now configured and healthy (cluster_state:ok)."
+      return 0
+    fi
+
+    log "⏳ cluster_state is not ok yet, attempt ${attempt}/${max_attempts}..."
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+
+  log "❌ Redis Cluster did not reach cluster_state:ok in time."
+  return 1
+}
+
 main() {
   log "🚧 Starting Redis Cluster initialization..."
 
@@ -67,8 +88,8 @@ main() {
 
   create_cluster
 
-  if is_cluster_configured; then
-    log "🎉 Redis Cluster is now configured and healthy (cluster_state:ok)."
+  if wait_for_cluster_ok 30; then
+    log "🎉 Redis Cluster initialization finished successfully."
     exit 0
   else
     log "❌ Redis Cluster creation did not result in cluster_state:ok. Please check node logs."
