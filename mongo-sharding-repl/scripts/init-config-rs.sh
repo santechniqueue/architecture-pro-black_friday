@@ -35,8 +35,8 @@ wait_for_rs_primary() {
   log "Waiting for PRIMARY in replica set at ${host}:${port}..."
 
   for ((i=1; i<=max_attempts; i++)); do
-    local status
-    status="$(mongosh --host "$host" --port "$port" --quiet 2>/dev/null <<'EOF'
+    local output
+    output="$(mongosh --host "$host" --port "$port" --quiet 2>/dev/null <<'EOF'
 try {
   const s = rs.isMaster();
   if (s.ismaster === true) {
@@ -49,12 +49,12 @@ try {
 }
 EOF
 )"
-    if [[ "$status" == "PRIMARY" ]]; then
+    if echo "$output" | grep -q "PRIMARY"; then
       log "✅ PRIMARY is ready at ${host}:${port}."
       return 0
     fi
 
-    log "⏳ PRIMARY is not ready yet (${status}), attempt ${i}/${max_attempts}..."
+    log "⏳ PRIMARY is not ready yet (raw output: ${output}), attempt ${i}/${max_attempts}..."
     sleep 5
   done
 
