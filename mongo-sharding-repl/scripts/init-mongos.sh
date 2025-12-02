@@ -65,12 +65,60 @@ sh.addShard("shard2/shard2a:27017,shard2b:27017,shard2c:27017");
 EOF
   fi
 
-  log "🎉 Shards are configured in mongos."
+  log "✅ Shards are configured in mongos."
+}
+
+ensure_db_sharded_and_seeded() {
+  log "Configuring sharding and seeding data for 'somedb.helloDoc'..."
+
+  wait_for_mongo mongos_router 27026
+
+  mongosh --host mongos_router --port 27026 <<'EOF'
+print("Enabling sharding for database 'somedb'...");
+try {
+  sh.enableSharding("somedb");
+} catch (e) {
+  print("enableSharding('somedb') failed (possibly already enabled): " + e);
+}
+
+print("Sharding collection 'somedb.helloDoc' on hashed 'name'...");
+try {
+  sh.shardCollection("somedb.helloDoc", { "name": "hashed" });
+} catch (e) {
+  // Ignore if collection is already sharded
+  if (e.codeName === "NamespaceAlreadySharded") {
+    print("Collection 'somedb.helloDoc' is already sharded, skipping.");
+  } else {
+    print("shardCollection error: " + e);
+  }
+}
+
+print("Switching to database 'somedb'...");
+use somedb;
+
+const currentCount = db.helloDoc.countDocuments();
+print("Current helloDoc count: " + currentCount);
+
+if (currentCount === 0) {
+  print("Seeding 1000 documents into somedb.helloDoc...");
+  for (let i = 0; i < 1000; i++) {
+    db.helloDoc.insertOne({ age: i, name: "ly" + i });
+  }
+} else {
+  print("Collection already has data, skipping seeding.");
+}
+
+const finalCount = db.helloDoc.countDocuments();
+print("Final helloDoc count: " + finalCount);
+EOF
+
+  log "✅ Sharding and seeding for 'somedb.helloDoc' completed."
 }
 
 main() {
-  log "🚧 Starting mongos initialization (shards registration)..."
+  log "🚧 Starting mongos initialization (shards registration and DB setup)..."
   ensure_shards_added
+  ensure_db_sharded_and_seeded
   log "🎉 mongos initialization completed."
 }
 
