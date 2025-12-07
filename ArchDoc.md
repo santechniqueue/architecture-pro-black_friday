@@ -40,7 +40,7 @@
 db.orders.createIndex({ user_id: 1, created_at: -1 });
 
 // Быстрый поиск по числовому id заказа
-db.orders.createIndex({ order_number: 1 }, { unique: true });
+db.orders.createIndex({ order_id: 1 }, { unique: true });
 
 // Поиск и обновление по статусу для внутренних процессов
 db.orders.createIndex({ status: 1, updated_at: -1 });
@@ -103,12 +103,12 @@ db.orders.createIndex({ status: 1, updated_at: -1 });
 
 ### Индексы
 
-```javasrcipt
+```javascript
 // Основной индекс под выдачу каталога: категория + цена
 db.products.createIndex({ category: 1, price: 1 });
 
 // Быстрый доступ к остаткам по geo + product
-db.products.createIndex({ _id: 1, "stock_by_geo.geo_zone": 1 });
+db.products.createIndex({ _id: 1, "stocks.geo_zone": 1 });
 
 // Фильтрация активных товаров в каталоге
 db.products.createIndex({ is_active: 1, category: 1, price: 1 });
@@ -142,7 +142,7 @@ db.products.createIndex({ is_active: 1, category: 1, price: 1 });
    - `geo` не является основным фильтром каталога - чаще всего пользователь фильтрует по категории/цене, а геозона идёт как дополнительный фильтр наличия.
 
 
-## Коллекция `Carts`
+## 3. Коллекция `Carts`
 
 ### Основные операции
 
@@ -161,7 +161,7 @@ db.products.createIndex({ is_active: 1, category: 1, price: 1 });
 {
   _id: ObjectId(),                  // Идентификатор корзины
   user_id: ObjectId(),              // Может быть null для гостя
-  session_id: ObjectId(),           // Уникален для каждого пользователя
+  session_id: String,               // Уникальный идентификатор сессии (UUID/токен и т.п.)
   status: String,                   // "active" | "ordered" | "abandoned"
   items: [
     {
@@ -245,6 +245,7 @@ db.carts.createIndex(
    3. Объединить `items` в приложении и записать в пользовательскую корзину (`updateOne` по `user_id`, `session_id`).
    4. Гостевую пометить `status: "abandoned"`.
    - Здесь все запросы либо по полному шард-ключу, либо по его префиксу.
-4. Динамический характер нагрузки:
-   - Корзины в корзине может происходить пик нагрузок на распродажах, TTL-очистка старых корзин.
-   - Увеличение количества шардов даёт возможность балансировщику перекидывать чанки с корзинами на менее загруженные узлы.
+4. Динамический характер нагрузки: - 
+   - По корзинам возможны серьёзные пики нагрузок в периоды распродаж. 
+   - Корзины живут недолго: активно обновляются и затем либо превращаются в заказ, либо удаляются TTL-механизмом. 
+   - Увеличение числа шардов позволяет балансировщику перекидывать чанки с корзинами на менее загруженные узлы, что отражает идею dynamic sharding на практике.
