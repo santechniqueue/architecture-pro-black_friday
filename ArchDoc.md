@@ -249,3 +249,144 @@ db.carts.createIndex(
    - По корзинам возможны серьёзные пики нагрузок в периоды распродаж. 
    - Корзины живут недолго: активно обновляются и затем либо превращаются в заказ, либо удаляются TTL-механизмом. 
    - Увеличение числа шардов позволяет балансировщику перекидывать чанки с корзинами на менее загруженные узлы, что отражает идею dynamic sharding на практике.
+
+# Задание 8. Выявление и устранение «горячих» шардов
+
+## Метрики
+
+1. Операции в секунду по шарду, снимаем раз в N сек.:
+    ```js
+    db.serverStatus().opcounters
+    /*
+    opcounters : {
+       insert : Long("<num>"),
+       query : Long("<num>"),
+       update : Long("<num>"),
+       delete : Long("<num>"),
+       getmore : Long("<num>"),
+       command : Long("<num>"),
+    }
+    */
+    ```
+    - `shard_reads_qps` - rate(opcounters.query + opcounters.command на чтение).
+    - `shard_writes_qps` - rate(opcounters.insert + update + delete).
+2. Latency запросов по шарду:
+   - Количество операций и конфликтов:
+     ```js
+     db.serverStatus().metrics.operation
+     /*
+     {
+       scanAndOrder: { total: 123, time: 456 },
+       writeConflicts: { ... },
+     }
+     */
+     ```
+   - Можно включить profiling на slow-query, и из system.profile:
+       ```js
+       db.setProfilingLevel(1, { slowms: 50 }); // всё, что >50мс
+       db.system.profile.aggregate([
+         { $match: { ns: "mobile_world.products" } },
+           { $group: {
+             _id: null,
+             p95_ms: {
+               $percentile: { input: "$millis", p: [0.95] }
+             }
+           }}
+        ]);
+      ```
+3. Статусы репликации:
+    ```js
+    rs.printSecondaryReplicationInfo()
+    /*
+    source: m1.example.net:27002
+        syncedTo: Mon Mar 01 2021 16:30:50 GMT-0800 (PST)
+        0 secs (0 hrs) behind the primary
+    source: m2.example.net:27003
+        syncedTo: Mon Mar 01 2021 16:30:50 GMT-0800 (PST)
+        0 secs (0 hrs) behind the primary
+    ...
+    */
+    ```
+4. Ресурсы:
+   - % использования CPU шардов
+   - % дисковой IO-задержки шардов
+   - Чтение с диска (байт/сек) на шардах
+   - Запись на диск (байт/сек) на шардах
+   - Количество активных подключений на шардах
+5. Метрики по чанкам и распределению данных:
+    ```js
+    db.getSiblingDB("config").chunks.aggregate([
+      { $match: { ns: "mobile_world.products" } },
+      { $group: { _id: "$shard", chunks: { $sum: 1 } } }
+    ]);
+    /*
+    { _id: "shard01", chunks: 120 }
+    { _id: "shard02", chunks: 80  }
+    { _id: "shard03", chunks: 95  }
+    */
+    ```
+6. Количество данных на шард:
+    ```js
+    db.getSiblingDB("mobile_world").products.stats({ scale: 1024*1024 })
+    /*
+    {
+      ns: "mobile_world.products",
+      size: ...,
+      sharded: true,
+      shards: {
+        shard01: { size: 8000, count: 500k, ... },
+        shard02: { size: 3000, count: 150k, ... },
+        shard03: { size: 3200, count: 160k, ... }
+      }
+    }
+    ```
+7. Задержки выполнения операций:
+    ```js
+    db.serverStatus().opLatencies
+    ```
+
+
+## Механизмы автоматического перераспределения данных
+
+1. Встроенный балансировщик MongDB:
+    
+    Балансировщик уравнивает количество и размер чанков между шардами.
+    ```js
+    // Проверка состояния балансировщика
+    sh.getBalancerState();
+    
+    // Включение балансировщика
+    sh.setBalancerState(true);
+    
+    // Настройка размера чанка (по умолчанию 64MB, можно снизить для более тонкого сплита)
+    db.getSiblingDB("config").settings.update(
+      { _id: "chunksize" },
+      { $set: { value: 32 } },     // 32MB
+      { upsert: true }
+    );
+    ```
+2. Дробление горячих чанков по цене:
+
+    Идея заключается в том, чтобы один большой чанк разделить на несколько более мелких чанков командой `sh.splitAt(namespace, query)`, каждый из которых может быть перенесён на другой шард. 
+    Например, по цене:
+    ```js
+    sh.splitAt(
+      "mobile_world.products",
+      { category: "electronics", price: 10000 }
+    );
+    
+    sh.splitAt(
+      "mobile_world.products",
+      { category: "electronics", price: 20000 }
+    );
+    
+    sh.splitAt(
+      "mobile_world.products",
+      { category: "electronics", price: 50000 }
+    );
+    ```
+3. Включение авторазделение чанков:
+    ```js
+    sh.enableAutoSplit()
+    ```
+    Важно: такой подход работает только до версии MongoDB 6.0.3
