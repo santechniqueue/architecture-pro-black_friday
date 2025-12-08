@@ -14,19 +14,19 @@
 
 ```javascript
 {
-  _id: ObjectId(),                  // Уникальный идентификатор заказа (order_id)
+  _id: ObjectId(),                  // Уникальный идентификатор документа
   order_id: Integer,                // Уникальный "человекочитаемый" числовой id заказа для клиента 
   user_id: ObjectId(),              // Идентификатор клиента
   created_at: ISODate(),            // Дата и время оформления заказа
   status: String,                   // "new" | "paid" | "shipped" | "delivered" | "cancelled" ...
-  total_cost: Decimal128,           // Общая сумма заказа, Decimal128 - best-practice для хранения денежных сумм
+  total_cost: NumberDecimal("0.00"),// Общая сумма заказа, Decimal128 - best-practice для хранения денежных сумм
   geo_zone: String,                 // Код геозоны, например "RU-MOW", "RU-SPE", "RU-SVE"
   items: [
     {
       product_id: ObjectId(),
       name: String,                 // Денормализация имени товара для удобства аналитики
       category: String,             // Денормализация категории
-      price: NumberDecimal,         // Цена на момент покупки
+      price: NumberDecimal("0.00"), // Цена на момент покупки
       quantity: NumberInt()         // Количество
     }
   ],
@@ -84,7 +84,7 @@ db.orders.createIndex({ status: 1, updated_at: -1 });
   _id: ObjectId(),                  // product_id
   name: String,                     // Наименование
   category: String,                 // Например "smartphones", "audio", "tv", "books"
-  price: NumberDecimal,             // Текущая цена
+  price: NumberDecimal("0.00"),     // Текущая цена
   stocks: [                         // Остатки по геозонам
     {
       geo_zone: String,             // "RU-MOW", "RU-SPE", ...
@@ -343,7 +343,15 @@ db.carts.createIndex(
 7. Задержки выполнения операций:
     ```js
     db.serverStatus().opLatencies
+    /*
+    {
+      reads:  { latency: NumberLong("123456"), ops: NumberLong("7890") },
+      writes: { latency: NumberLong("23456"),  ops: NumberLong("345")  },
+      commands: { ... }
+    }
+    */
     ```
+    - На основе latency или ops можно вычислить среднюю latency, а в мониторинге - агрегировать.
 
 
 ## Механизмы автоматического перераспределения данных
@@ -385,8 +393,29 @@ db.carts.createIndex(
       { category: "electronics", price: 50000 }
     );
     ```
-3. Включение авторазделение чанков:
-    ```js
-    sh.enableAutoSplit()
-    ```
-    Важно: такой подход работает только до версии MongoDB 6.0.3
+   
+3. Перераспределение данных между шардами:
+    
+    После предварительного splitAt один большой чанк electronics делится на несколько диапазонов по цене. Каждый диапазон можно перенести на менее загруженный шард через sh.moveChunk. Таким образом мы не только уменьшаем размер горячих чанков, но и физически распределяем их между шардами.
+
+    Например, перенести часть "electronics" до 20к на shard02:
+      ```js
+      // Пример: перенести часть "electronics" до 20k на shard02
+      sh.moveChunk(
+        "mobile_world.products",
+        { category: "electronics", price: 15000 },
+        "shard02"
+      );
+        
+      // И, например, диапазон 20k–50k на shard03
+      sh.moveChunk(
+        "mobile_world.products",
+        { category: "electronics", price: 30000 },
+        "shard03"
+      );
+      ```
+4. Включение авторазделение чанков:
+    
+    В старых версиях MongoDB до 6.0.3 можно явно управлять авторазделением через `sh.disableAutoSplit()` / `sh.enableAutoSplit()`. 
+
+    В современных версиях авторазделение включено по умолчанию, и основной способ управления - это размер чанка (`chunksize`) и явные `sh.splitAt(...)`.
