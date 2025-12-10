@@ -1,6 +1,6 @@
 # Как запустить
 
-Запускаем mongodb, redis и приложение.
+Запускаем mongodb и приложение.
 
 ```shell
 docker compose up -d
@@ -9,29 +9,12 @@ docker compose up -d
 # Как проверить
 
 Дожидаемся успешного запуска всех контейнеров.
-После можно проверить по логам, все ли шарды и реплики успешно инициализированы, весь ли кластер Redis успешно поднялся.
+После можно проверить по логам, весь ли кластер Redis успешно поднялся.
 ```
-docker logs config_init
-docker logs shards_init
-docker logs mongos_init
 docker logs redis_init
 ```
-Если всё успешно, в логах этих контейнеров можно увидеть подобные сообщения:
+Если всё успешно, в логах контейнера можно увидеть подобные сообщения:
 ```
-[2025-12-02 22:18:56] Waiting for PRIMARY in replica set at configSrv1:27017...
-[2025-12-02 22:18:56] ✅ PRIMARY is ready at configSrv1:27017.
-[2025-12-02 22:18:56] 🎉 Config server replica set initialization completed.
-```
-```
-Waiting for PRIMARY in replica set at shard2a:27017...
-[2025-12-02 22:19:00] ✅ PRIMARY is ready at shard2a:27017.
-[2025-12-02 22:19:00] 🎉 Shard replica set shard2 initialization completed.
-[2025-12-02 22:19:00] 🎉 All shard replica sets are initialized.
-```
-```
-[2025-12-02 22:19:13] 🎉 Shards are configured in mongos.
-[2025-12-02 22:19:13] 🎉 mongos initialization completed.
-
 [2025-12-02 23:41:40] 🎉 Redis Cluster is now configured and healthy (cluster_state:ok).
 [2025-12-02 23:41:40] 🎉 Redis Cluster initialization finished successfully.
 ```
@@ -51,6 +34,7 @@ Waiting for PRIMARY in replica set at shard2a:27017...
     docker exec -it redis1 redis-cli cluster nodes
     ```
     Здесь у всех нод должно быть "connected"
+
 
 Откройте в браузере http://localhost:8080
 
